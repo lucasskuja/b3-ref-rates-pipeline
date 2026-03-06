@@ -12,10 +12,18 @@ env/
 venv/
 ENV/
 
-# Airflow
-airflow/logs/
-airflow/tmp/
-airflow/airflow.db
+# Airflow runtime
+logs/
+airflow-webserver.pid
+scheduler.pid
+airflow.cfg
+webserver_config.py
+
+# Airflow database (caso use sqlite)
+airflow.db
+
+# Docker volumes
+postgres_data/
 
 # Data files
 *.csv
@@ -30,3 +38,8 @@ Thumbs.db
 
 # AWS credentials
 .aws/
+
+# Test / coverage
+.pytest_cache/
+.coverage
+htmlcov/
