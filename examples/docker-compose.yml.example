@@ -1,0 +1,186 @@
+# Exemplo: Configuração do docker-compose.yml para b3_taxas_report
+# 
+# IMPORTANTE: Este é um exemplo. Adapte com suas configurações reais.
+# Adicione apenas as variáveis de ambiente necessárias ao seu docker-compose.yml existente
+
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:14
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U airflow"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  airflow-webserver:
+    build: .
+    entrypoint: /bin/bash
+    command: -c "airflow db init && airflow webserver"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      # ===== AIRFLOW CONFIG =====
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
+      AIRFLOW__CORE__LOAD_EXAMPLES: 'False'
+      AIRFLOW__CORE__LOAD_DEFAULT_CONNECTIONS: 'False'
+      
+      # ===== NEW: LLM INTEGRATION =====
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-sk-your-key-here}
+      
+      # ===== NEW: EMAIL CONFIGURATION =====
+      SMTP_SERVER: ${SMTP_SERVER:-smtp.gmail.com}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SENDER_EMAIL: ${SENDER_EMAIL:-seu-email@gmail.com}
+      SENDER_PASSWORD: ${SENDER_PASSWORD:-sua-senha-app}
+      EMAIL_RECIPIENTS: ${EMAIL_RECIPIENTS:-credit-team@empresa.com.br}
+      
+      # ===== NEW: DATABASE CONNECTION =====
+      DB_CONNECTION_STRING: ${DB_CONNECTION_STRING:-postgresql://airflow:airflow@postgres:5432/b3_taxas}
+    
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./scripts:/home/airflow/scripts
+      - ./logs:/opt/airflow/logs
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  airflow-scheduler:
+    build: .
+    entrypoint: /bin/bash
+    command: -c "airflow db init && airflow scheduler"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      # ===== AIRFLOW CONFIG =====
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
+      AIRFLOW__CORE__LOAD_EXAMPLES: 'False'
+      AIRFLOW__CORE__LOAD_DEFAULT_CONNECTIONS: 'False'
+      
+      # ===== NEW: LLM INTEGRATION =====
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-sk-your-key-here}
+      
+      # ===== NEW: EMAIL CONFIGURATION =====
+      SMTP_SERVER: ${SMTP_SERVER:-smtp.gmail.com}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SENDER_EMAIL: ${SENDER_EMAIL:-seu-email@gmail.com}
+      SENDER_PASSWORD: ${SENDER_PASSWORD:-sua-senha-app}
+      EMAIL_RECIPIENTS: ${EMAIL_RECIPIENTS:-credit-team@empresa.com.br}
+      
+      # ===== NEW: DATABASE CONNECTION =====
+      DB_CONNECTION_STRING: ${DB_CONNECTION_STRING:-postgresql://airflow:airflow@postgres:5432/b3_taxas}
+    
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./scripts:/home/airflow/scripts
+      - ./logs:/opt/airflow/logs
+    restart: always
+
+volumes:
+  postgres_data:
+
+# ===== COMO USAR =====
+#
+# 1. Copie este arquivo como base para seu docker-compose.yml
+#
+# 2. Crie um arquivo .env com as variáveis:
+#    cat > .env << EOF
+#    OPENAI_API_KEY=sk-...
+#    SMTP_SERVER=smtp.gmail.com
+#    SMTP_PORT=587
+#    SENDER_EMAIL=seu-email@gmail.com
+#    SENDER_PASSWORD=sua-senha-app
+#    EMAIL_RECIPIENTS=credits@empresa.com.br
+#    DB_CONNECTION_STRING=postgresql://airflow:airflow@postgres:5432/b3_taxas
+#    EOF
+#
+# 3. Build e inicialize:
+#    docker compose build
+#    docker compose up airflow-init
+#    docker compose up -d
+#
+# 4. Acesse: http://localhost:8080
+#
+# ===== VARIÁVEIS DE AMBIENTE =====
+#
+# OPENAI_API_KEY
+#   Descrição: Chave de API OpenAI
+#   Obter em: https://platform.openai.com/api-keys
+#   Exemplo: sk-proj-ABC123DEF456...
+#
+# SMTP_SERVER
+#   Descrição: Servidor SMTP para envio de emails
+#   Padrão: smtp.gmail.com
+#   Alternativas: smtp.outlook.com, seu-servidor-corporativo.com
+#
+# SMTP_PORT
+#   Descrição: Porta SMTP
+#   Padrão: 587 (TLS)
+#   Alternativa: 465 (SSL)
+#
+# SENDER_EMAIL
+#   Descrição: Email remetente
+#   Exemplo: relatorios@empresa.com.br ou seu-email@gmail.com
+#
+# SENDER_PASSWORD
+#   Descrição: Senha ou app password
+#   Para Gmail: Usar "Senha de Aplicativo" (não a senha da conta)
+#   Obter em: https://myaccount.google.com/apppasswords
+#
+# EMAIL_RECIPIENTS
+#   Descrição: Destinatários do relatório (separados por vírgula)
+#   Exemplo: credit-team@empresa.com.br,manager@empresa.com.br
+#
+# DB_CONNECTION_STRING
+#   Descrição: String de conexão do banco de dados
+#   Formato: postgresql://user:password@host:port/database
+#   Padrão local: postgresql://airflow:airflow@postgres:5432/b3_taxas
+#
+# ===== TROUBLESHOOTING =====
+#
+# Erro: "No module named 'langchain'"
+#   Solução: docker compose build --no-cache
+#
+# Erro: "OPENAI_API_KEY not found"
+#   Solução: Verificar se .env existe e docker-compose está carregando
+#
+# Erro: "SMTP Authentication Error"
+#   Solução: Para Gmail, usar "Senha de app", não a senha da conta
+#
+# Logs:
+#   docker compose logs -f airflow-scheduler
+#   docker compose logs -f airflow-webserver
+#

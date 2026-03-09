@@ -48,6 +48,8 @@ b3-ref-rates-pipeline/
 - **AWS S3** → Armazenamento bruto (Bronze)
 - **Slack** → Alertas e monitoramento
 - **Docker + docker-compose** → Containerização
+- **LangChain + OpenAI** → Geração de relatórios com IA e análise de dados
+- **SMTP** → Envio de emails
 
 ## 📑 Modelagem de Dados
 
@@ -64,7 +66,15 @@ b3-ref-rates-pipeline/
 ## 📅 DAGs
 
 - **`b3_taxas_diario`**  
-  Executa diariamente em dias úteis às 20h.
+  Executa diariamente em dias úteis às 20h.  
+  Responsável por extrair, transformar e carregar as taxas referenciais.
+
+- **`b3_taxas_report`**
+  Executa às 20:20 (logo após `b3_taxas_diario` completar).  
+  Gera relatórios executivos com análise de LLM e envia via email para grupos de crédito.
+  - Aguarda conclusão de `b3_taxas_diario` via `ExternalTaskSensor`
+  - Analisa dados usando OpenAI GPT
+  - Envia relatório formatado (HTML + texto) via SMTP
 
 - **`b3_taxas_backfill`**  
   Permite reprocessar períodos históricos (até 10 anos).
@@ -190,6 +200,83 @@ Em **Admin → Variables**, adicione:
 - `S3_BUCKET` → nome do bucket para camada Bronze.  
 - `SLACK_WEBHOOK` → URL do webhook para alertas.  
 - `DB_SCHEMA` → schema do Postgres para camada Gold.  
+
+### 🤖 Configurar DAG de Relatórios com LLM (b3_taxas_report)
+
+Para utilizar a nova DAG de geração de relatórios com análise de LLM, siga os passos:
+
+#### 1️⃣ Instalar dependências adicionais
+
+As dependências necessárias já estão em `requirements.txt`:
+- `langchain` → Framework para integração com LLMs
+- `openai` → API OpenAI para análise de taxas
+- `python-dotenv` → Gerenciar variáveis de ambiente
+
+#### 2️⃣ Configurar variáveis de ambiente
+
+Copie o arquivo de exemplo e configure:
+
+```bash
+cp .env.example .env
+```
+
+Edite `.env` com suas credenciais:
+
+```env
+# OpenAI API Key (obter em https://platform.openai.com/api-keys)
+OPENAI_API_KEY=sk-your-api-key-here
+
+# Configuração SMTP para envio de email
+SMTP_SERVER=smtp.gmail.com        # Usar Gmail ou seu servidor SMTP
+SMTP_PORT=587
+SENDER_EMAIL=seu-email@gmail.com
+SENDER_PASSWORD=sua-senha-de-app  # Para Gmail, use "senha de app"
+
+# Lista de destinatários (separados por vírgula)
+EMAIL_RECIPIENTS=credit-team@empresa.com.br,manager@empresa.com.br
+
+# Banco de dados
+DB_CONNECTION_STRING=postgresql://user:password@localhost:5432/b3_taxas
+```
+
+**Dica para Gmail**: Se usar Gmail, gere uma [senha de aplicativo](https://myaccount.google.com/apppasswords) em vez de sua senha normal.
+
+#### 3️⃣ Configurar no Airflow (Docker)
+
+Se usar Docker, adicione as variáveis no `docker-compose.yml`:
+
+```yaml
+environment:
+  OPENAI_API_KEY: sk-your-api-key
+  SMTP_SERVER: smtp.gmail.com
+  SMTP_PORT: 587
+  SENDER_EMAIL: seu-email@gmail.com
+  SENDER_PASSWORD: sua-senha
+  EMAIL_RECIPIENTS: credit-team@empresa.com.br
+  DB_CONNECTION_STRING: postgresql://user:pass@postgres:5432/b3_taxas
+```
+
+#### 4️⃣ Ativar a DAG
+
+No Airflow Web UI:
+1. Vá para a lista de DAGs
+2. Procure por `b3_taxas_report`
+3. Clique no toggle para ativar
+4. A DAG será executada automaticamente às 20:20 em dias úteis
+
+#### 5️⃣ Como funciona
+
+1. **ExternalTaskSensor**: Aguarda que `b3_taxas_diario` complete com sucesso
+2. **Geração de Relatório**: Fetch de dados do Postgres → Análise via LLM (GPT) → Geração de narrativa executiva
+3. **Envio de Email**: Relatório é formatado em HTML e texto, enviado para todos os destinatários
+
+#### 6️⃣ Exemplo de relatório gerado
+
+O relatório inclui:
+- 📊 **Análise Executiva** (gerada por IA)
+- 📈 **Estatísticas** (taxa média, mínima, máxima, desvio padrão)
+- 📅 **Data da referência** e horário de geração
+- 🔒 **Confidencial** - Uso interno apenas
 
 ### ✅ Validar DAGs
 - Verifique se os DAGs aparecem na interface.  
